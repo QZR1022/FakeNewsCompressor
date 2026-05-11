@@ -42,8 +42,9 @@ public:
     // 显示统计报告
     // 参数：totalNews - 总新闻数，fakeCount - 假新闻数
     //       avgCompressionRatio - 平均压缩率，topFakeList - 热点假新闻列表
-    void showStatistics(int totalNews, int fakeCount, double avgCompressionRatio,
-        const std::vector<std::pair<size_t, int>>& topFakeList);
+    void showStatistics(int totalNews, int fakeNews, double avgCompressionRatio,
+    double fakeRatio,
+    const std::vector<std::pair<size_t, int>>& topList);
 
     // 显示信息（普通提示）
     void showInfo(const std::string& message);

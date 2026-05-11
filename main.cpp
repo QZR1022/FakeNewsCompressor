@@ -89,6 +89,9 @@ int main() {
 			timestamps.clear();
 			credibilities.clear();
 
+			int archiveSuccess = 0;
+			int archiveFail = 0;
+
 			for (int i = 0; i < totalNews; ++i) {
 				const NewsPacket& pkt = allNews[i];
 				DetectionResult dr = detector.detect(pkt.content);
@@ -120,7 +123,11 @@ int main() {
 					std::string outPath = ARCHIVE_DIR + std::to_string(fp) + COMPRESSED_EXT;
 					if (!compressed.empty()) {
 						bool ok = writeBytesToFile(outPath, compressed.data(), compressed.size());
-						if (!ok) {
+						if (ok) {
+							archiveSuccess++;
+						}
+						else {
+							archiveFail++;
 							ui.showWarning("Archive write failed: " + outPath);
 						}
 					}
@@ -137,6 +144,8 @@ int main() {
 			ui.showSuccess("Monitoring completed.");
 			ui.showInfo("Total: " + std::to_string(totalNews) +
 				", Fake: " + std::to_string(fakeCount));
+			ui.showInfo("Archive write success: " + std::to_string(archiveSuccess) +
+				", fail: " + std::to_string(archiveFail));
 			ui.waitForKey();
 		}
 		else if (choice == 2) {
@@ -178,8 +187,14 @@ int main() {
 		else if (choice == 3) {
 			// 统计
 			double avgCompressionRatio = (ratioCount > 0) ? (ratioSum / ratioCount) : 0.0;
+
+			double fakeRatio = 0.0;
+			if (totalNews > 0) {
+				fakeRatio = (double)fakeCount * 100.0 / (double)totalNews;
+			}
+
 			std::vector<std::pair<size_t, int>> topList = tracker.getTopFakeNews(5);
-			ui.showStatistics(totalNews, fakeCount, avgCompressionRatio, topList);
+			ui.showStatistics(totalNews, fakeCount, avgCompressionRatio, fakeRatio, topList);
 			ui.waitForKey();
 		}
 		else if (choice == 4) {

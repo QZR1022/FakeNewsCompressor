@@ -144,6 +144,7 @@ void ConsoleUI::showSearchResults(const std::vector<SearchResult>& results) {
 }
 
 void ConsoleUI::showStatistics(int totalNews, int fakeCount, double avgCompressionRatio,
+	double fakeRatio,
 	const std::vector<std::pair<size_t, int>>& topFakeList) {
 	clearScreen();
 
@@ -155,6 +156,11 @@ void ConsoleUI::showStatistics(int totalNews, int fakeCount, double avgCompressi
 
 	setColor(COLOR_RED);
 	std::cout << "Fake News: " << fakeCount << "\n";
+	resetColor();
+
+	setColor(COLOR_YELLOW);
+	std::cout << "Fake Ratio: " << std::fixed << std::setprecision(2)
+		<< fakeRatio << "%\n";
 	resetColor();
 
 	setColor(COLOR_GREEN);
