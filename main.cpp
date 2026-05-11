@@ -13,8 +13,15 @@
 #include "Searcher.h"
 #include "ConsoleUI.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 int main() {
+
+#ifdef _WIN32
 	SetConsoleOutputCP(CP_UTF8);
+#endif
 
 	ConsoleUI ui;
 	PacketReader reader;
@@ -39,8 +46,16 @@ int main() {
 		return 1;
 	}
 
+
 	std::vector<NewsPacket> allNews = reader.getAllNews();
+
+	if ((int)allNews.size() > MAX_NEWS_COUNT) {
+		allNews.resize(MAX_NEWS_COUNT);
+		ui.showWarning("Input too large, truncated to MAX_NEWS_COUNT = " + std::to_string(MAX_NEWS_COUNT));
+	}
+
 	int totalNews = (int)allNews.size();
+
 
 	if (totalNews <= 0) {
 		ui.showWarning("No valid news data found.");
@@ -82,7 +97,7 @@ int main() {
 				timestamps.push_back(pkt.timestamp);
 				credibilities.push_back(dr.credibility);
 
-				bool isFake = (dr.label == "FAKE" || dr.label == "假新闻");
+				bool isFake = (dr.label == "FAKE" );
 				if (isFake) {
 					fakeCount++;
 
@@ -104,7 +119,10 @@ int main() {
 					// 归档文件名：fingerprint.ncz
 					std::string outPath = ARCHIVE_DIR + std::to_string(fp) + COMPRESSED_EXT;
 					if (!compressed.empty()) {
-						writeBytesToFile(outPath, compressed.data(), compressed.size());
+						bool ok = writeBytesToFile(outPath, compressed.data(), compressed.size());
+						if (!ok) {
+							ui.showWarning("Archive write failed: " + outPath);
+						}
 					}
 				}
 
@@ -137,6 +155,14 @@ int main() {
 			int mode = ui.getUserChoice(1, 2);
 
 			std::string key = ui.getUserInput("Input keyword/phrase: ");
+			key = trim(key);
+
+			if (key.empty()) {
+				ui.showWarning("Keyword/phrase is empty.");
+				ui.waitForKey();
+				continue;
+			}
+
 			std::vector<SearchResult> results;
 
 			if (mode == 1) {

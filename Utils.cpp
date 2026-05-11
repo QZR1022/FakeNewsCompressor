@@ -65,15 +65,22 @@ bool writeStringToFile(const std::string& filePath, const std::string& content) 
 }
 
 bool writeBytesToFile(const std::string& filePath, const char* data, size_t size) {
-	if (data == nullptr && size > 0) return false;
-
-	std::ofstream out(filePath, std::ios::binary);
-	if (!out.is_open()) return false;
-
-	if (size > 0) {
-		out.write(data, static_cast<std::streamsize>(size));
+	std::ofstream ofs(filePath, std::ios::binary);
+	if (!ofs.is_open()) {
+		return false;
 	}
-	return out.good();
+
+	if (data == nullptr || size == 0) {
+		// 允许写空文件的话可 return true; 否则 return false;
+		return false;
+	}
+
+	ofs.write(data, static_cast<std::streamsize>(size));
+	if (!ofs.good()) {
+		return false;
+	}
+
+	return true;
 }
 
 size_t readBytesFromFile(const std::string& filePath, std::vector<char>& outData) {
