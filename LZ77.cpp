@@ -1,146 +1,206 @@
+﻿#define _CRT_SECURE_NO_WARNINGS
 #include "LZ77.h"
 #include "Utils.h"
-
-#include <algorithm>
-#include <cstdint>
-#include <string>
 #include <vector>
+#include <string>
+#include <algorithm>
+#include <cstring>
+#include <cstdint>
+using namespace std;
 
-static void WriteU16(std::vector<char>& out, unsigned short v) {
-	out.push_back((char)(v & 0xFF));
-	out.push_back((char)((v >> 8) & 0xFF));
-}
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
-static bool ReadU16(const std::vector<char>& in, size_t& p, unsigned short& v) {
-	if (p + 1 >= in.size()) return false;
-	unsigned char b0 = (unsigned char)in[p];
-	unsigned char b1 = (unsigned char)in[p + 1];
-	v = (unsigned short)(b0 | (b1 << 8));
-	p += 2;
-	return true;
-}
-
+// 构造函数
 LZ77::LZ77(int windowSize, int lookaheadSize)
-	: m_windowSize(windowSize),
-	m_lookaheadSize(lookaheadSize),
-	m_lastOriginalSize(0),
-	m_lastCompressedSize(0),
-	m_lastTokenCount(0) {
-	if (m_windowSize <= 0) m_windowSize = 4096;
-	if (m_lookaheadSize <= 0) m_lookaheadSize = 16;
+{
+    m_windowSize = windowSize;
+    m_lookaheadSize = lookaheadSize;
+    m_lastOriginalSize = 0;
+    m_lastCompressedSize = 0;
+    m_lastTokenCount = 0;
 }
 
-std::pair<int, int> LZ77::findLongestMatch(const std::string& data, int pos) {
-	int bestOffset = 0;
-	int bestLen = 0;
+// 在滑动窗口中寻找最长匹配
+pair<int, int> LZ77::findLongestMatch(const string& data, int pos)
+{
+    int maxLen = 0;
+    int maxOffset = 0;
+    int windowStart = max(0, pos - m_windowSize);
 
-	int start = std::max(0, pos - m_windowSize);
-	int maxLen = std::min(m_lookaheadSize, (int)data.size() - pos);
+    for (int offset = 1; offset <= pos - windowStart; offset++)
+    {
+        int len = 0;
+        while (len < m_lookaheadSize &&
+            pos + len < (int)data.size() &&
+            data[pos + len] == data[pos - offset + len])
+        {
+            len++;
+        }
 
-	for (int i = start; i < pos; ++i) {
-		int len = 0;
-		while (len < maxLen && (i + len) < pos && data[i + len] == data[pos + len]) {
-			++len;
-		}
-		if (len > bestLen) {
-			bestLen = len;
-			bestOffset = pos - i;
-		}
-	}
+        if (len > maxLen)
+        {
+            maxLen = len;
+            maxOffset = offset;
+        }
+    }
 
-	return std::make_pair(bestOffset, bestLen);
+    return pair<int, int>(maxOffset, maxLen);
 }
 
-std::vector<char> LZ77::compress(const std::string& input) {
-	std::vector<char> out;
-	m_lastOriginalSize = input.size();
-	m_lastTokenCount = 0;
+// 压缩字符串
+vector<char> LZ77::compress(const string& input)
+{
+    vector<char> result;
+    int pos = 0;
+    int n = (int)input.size();
+    m_lastTokenCount = 0;
 
-	int pos = 0;
-	while (pos < (int)input.size()) {
-		std::pair<int, int> m = findLongestMatch(input, pos);
-		int offset = m.first;
-		int len = m.second;
+    while (pos < n)
+    {
+        pair<int, int> match = findLongestMatch(input, pos);
+        int offset = match.first;
+        int length = match.second;
 
-		if (pos + len >= (int)input.size()) {
-			if (len > 0) --len;
-			else offset = 0;
-		}
+        char nextChar;
+        if (pos + length < n)
+        {
+            nextChar = input[pos + length];
+        }
+        else
+        {
+            nextChar = '\0';
+        }
 
-		char nextChar = input[pos + len];
+        // 写入偏移量（2字节，小端序）
+        uint16_t offset16 = static_cast<uint16_t>(offset);
+        result.push_back(static_cast<char>(offset16 & 0xFF));
+        result.push_back(static_cast<char>((offset16 >> 8) & 0xFF));
 
-		WriteU16(out, (unsigned short)offset);
-		WriteU16(out, (unsigned short)len);
-		out.push_back(nextChar);
+        // 写入长度（1字节）
+        uint8_t len8 = static_cast<uint8_t>(length);
+        result.push_back(static_cast<char>(len8));
 
-		++m_lastTokenCount;
-		pos += (len + 1);
-	}
+        // 写入下一个字符（1字节）
+        result.push_back(nextChar);
 
-	m_lastCompressedSize = out.size();
-	return out;
+        if (length == 0)
+        {
+            pos++;
+        }
+        else
+        {
+            pos += length + 1;
+        }
+
+        m_lastTokenCount++;
+    }
+
+    m_lastOriginalSize = input.size();
+    m_lastCompressedSize = result.size();
+
+    return result;
 }
 
-std::string LZ77::decompress(const std::vector<char>& compressed) {
-	std::string out;
-	size_t p = 0;
+// 解压字节流
+string LZ77::decompress(const vector<char>& compressed)
+{
+    string result;
+    int i = 0;
+    int n = (int)compressed.size();
 
-	while (p < compressed.size()) {
-		unsigned short offset = 0;
-		unsigned short len = 0;
+    while (i + 3 < n)
+    {
+        uint16_t offset = static_cast<unsigned char>(compressed[i]) |
+            (static_cast<unsigned char>(compressed[i + 1]) << 8);
 
-		if (!ReadU16(compressed, p, offset)) break;
-		if (!ReadU16(compressed, p, len)) break;
-		if (p >= compressed.size()) break;
+        uint8_t length = static_cast<unsigned char>(compressed[i + 2]);
+        char nextChar = compressed[i + 3];
 
-		char nextChar = compressed[p++];
-		if (offset > 0 && len > 0) {
-			if ((size_t)offset > out.size()) continue;
-			size_t start = out.size() - (size_t)offset;
-			for (unsigned short i = 0; i < len; ++i) {
-				out.push_back(out[start + i]);
-			}
-		}
-		out.push_back(nextChar);
-	}
+        i += 4;
 
-	return out;
+        if (length > 0)
+        {
+            int startPos = (int)result.size() - offset;
+            for (int j = 0; j < length; j++)
+            {
+                result.push_back(result[startPos + j]);
+            }
+        }
+
+        if (nextChar != '\0')
+        {
+            result.push_back(nextChar);
+        }
+    }
+
+    return result;
 }
 
-bool LZ77::compressFile(const std::string& inputPath, const std::string& outputPath) {
-	std::string s = readFileToString(inputPath);
-	if (s.empty() && !fileExists(inputPath)) return false;
+// 压缩文件
+bool LZ77::compressFile(const string& inputPath, const string& outputPath)
+{
+    string content = readFileToString(inputPath);
+    if (content.empty())
+    {
+        return false;
+    }
 
-	std::vector<char> c = compress(s);
-	if (c.empty() && !s.empty()) return false;
+    vector<char> compressed = compress(content);
 
-	return writeBytesToFile(outputPath, c.data(), c.size());
+    FILE* fp = fopen(outputPath.c_str(), "wb");
+    if (!fp)
+    {
+        return false;
+    }
+
+    fwrite(compressed.data(), 1, compressed.size(), fp);
+    fclose(fp);
+
+    return true;
 }
 
-bool LZ77::decompressFile(const std::string& inputPath, const std::string& outputPath) {
-	std::vector<char> c;
-	size_t n = readBytesFromFile(inputPath, c);
-	if (n == 0 && !fileExists(inputPath)) return false;
+// 解压文件
+bool LZ77::decompressFile(const string& inputPath, const string& outputPath)
+{
+    vector<char> compressed;
+    size_t size = readBytesFromFile(inputPath, compressed);
+    if (size == 0)
+    {
+        return false;
+    }
 
-	std::string s = decompress(c);
-	return writeStringToFile(outputPath, s);
+    string decompressed = decompress(compressed);
+    return writeStringToFile(outputPath, decompressed);
 }
 
-double LZ77::getCompressionRatio(size_t originalSize, size_t compressedSize) const {
-	if (originalSize == 0) return 0.0;
-	return (double)compressedSize * 100.0 / (double)originalSize;
+// 计算压缩率
+double LZ77::getCompressionRatio(size_t originalSize, size_t compressedSize) const
+{
+    if (originalSize == 0)
+    {
+        return 100.0;
+    }
+    return (static_cast<double>(compressedSize) / originalSize) * 100.0;
 }
 
-void LZ77::getLastStats(size_t& originalSize, size_t& compressedSize, size_t& tokenCount) const {
-	originalSize = m_lastOriginalSize;
-	compressedSize = m_lastCompressedSize;
-	tokenCount = m_lastTokenCount;
+// 获取最后一次压缩的统计信息
+void LZ77::getLastStats(size_t& originalSize, size_t& compressedSize, size_t& tokenCount) const
+{
+    originalSize = m_lastOriginalSize;
+    compressedSize = m_lastCompressedSize;
+    tokenCount = m_lastTokenCount;
 }
 
-void LZ77::setWindowSize(int size) {
-	if (size > 0) m_windowSize = size;
+// 设置窗口大小
+void LZ77::setWindowSize(int size)
+{
+    m_windowSize = size;
 }
 
-void LZ77::setLookaheadSize(int size) {
-	if (size > 0) m_lookaheadSize = size;
+// 设置前瞻缓冲区大小
+void LZ77::setLookaheadSize(int size)
+{
+    m_lookaheadSize = size;
 }

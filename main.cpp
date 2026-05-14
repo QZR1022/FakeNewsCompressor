@@ -33,8 +33,7 @@ int main() {
 	detector.setThreshold(40.0); // 先给一个更稳的阈值，后续可调
 
 	// 2) 准备目录
-	createDirectoryIfNotExists(DATA_DIR);
-	createDirectoryIfNotExists(ARCHIVE_DIR);
+	createDirectory(ARCHIVE_DIR);
 
 	ui.showSplashScreen();
 

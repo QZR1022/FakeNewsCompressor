@@ -1,140 +1,223 @@
+﻿#define _CRT_SECURE_NO_WARNINGS
 #include "Utils.h"
-
 #include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
+#include <random>
+#include <functional>
 #include <sstream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <ctime>
+#include <iomanip>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>  // for _mkdir
+#endif
+
+// ============================================
+// 字符串处理函数实现
+// ============================================
 
 std::vector<std::string> splitString(const std::string& str, char delimiter) {
-	std::vector<std::string> result;
-	std::stringstream ss(str);
-	std::string item;
-	while (std::getline(ss, item, delimiter)) {
-		result.push_back(item);
-	}
-	// 兼容末尾分隔符情况：例如 "a,b,"
-	if (!str.empty() && str.back() == delimiter) {
-		result.push_back("");
-	}
-	return result;
+    std::vector<std::string> result;
+    std::stringstream ss(str);
+    std::string item;
+
+    while (std::getline(ss, item, delimiter)) {
+        result.push_back(item);
+    }
+
+    return result;
 }
 
 std::string toLower(const std::string& str) {
-	std::string out = str;
-	std::transform(out.begin(), out.end(), out.begin(),
-		[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-	return out;
+    std::string result = str;
+    for (char& c : result) {
+        c = std::tolower(static_cast<unsigned char>(c));
+    }
+    return result;
+}
+
+std::string toUpper(const std::string& str) {
+    std::string result = str;
+    for (char& c : result) {
+        c = std::toupper(static_cast<unsigned char>(c));
+    }
+    return result;
 }
 
 std::string trim(const std::string& str) {
-	if (str.empty()) return "";
+    size_t start = 0;
+    size_t end = str.length();
 
-	size_t left = 0;
-	while (left < str.size() && std::isspace(static_cast<unsigned char>(str[left]))) {
-		++left;
-	}
+    // 去除开头空白
+    while (start < end && std::isspace(static_cast<unsigned char>(str[start]))) {
+        start++;
+    }
 
-	if (left == str.size()) return "";
+    // 去除结尾空白
+    while (end > start && std::isspace(static_cast<unsigned char>(str[end - 1]))) {
+        end--;
+    }
 
-	size_t right = str.size() - 1;
-	while (right > left && std::isspace(static_cast<unsigned char>(str[right]))) {
-		--right;
-	}
-
-	return str.substr(left, right - left + 1);
+    return str.substr(start, end - start);
 }
 
-std::string readFileToString(const std::string& filePath) {
-	std::ifstream in(filePath, std::ios::binary);
-	if (!in.is_open()) return "";
+bool startsWith(const std::string& str, const std::string& prefix) {
+    if (prefix.length() > str.length()) return false;
+    return str.compare(0, prefix.length(), prefix) == 0;
+}
 
-	std::ostringstream oss;
-	oss << in.rdbuf();
-	return oss.str();
+bool endsWith(const std::string& str, const std::string& suffix) {
+    if (suffix.length() > str.length()) return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+}
+
+std::string replaceAll(const std::string& str, const std::string& from, const std::string& to) {
+    std::string result = str;
+    size_t pos = 0;
+
+    while ((pos = result.find(from, pos)) != std::string::npos) {
+        result.replace(pos, from.length(), to);
+        pos += to.length();
+    }
+
+    return result;
+}
+
+// ============================================
+// 文件操作函数实现
+// ============================================
+
+std::string readFileToString(const std::string& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        return "";
+    }
+
+    std::string content;
+    file.seekg(0, std::ios::end);
+    content.resize(static_cast<size_t>(file.tellg()));
+    file.seekg(0, std::ios::beg);
+    file.read(&content[0], content.size());
+
+    return content;
 }
 
 bool writeStringToFile(const std::string& filePath, const std::string& content) {
-	std::ofstream out(filePath, std::ios::binary);
-	if (!out.is_open()) return false;
+    std::ofstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
 
-	out.write(content.data(), static_cast<std::streamsize>(content.size()));
-	return out.good();
+    file.write(content.c_str(), content.size());
+    return file.good();
+}
+
+bool appendStringToFile(const std::string& filePath, const std::string& content) {
+    std::ofstream file(filePath, std::ios::binary | std::ios::app);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file.write(content.c_str(), content.size());
+    return file.good();
 }
 
 bool writeBytesToFile(const std::string& filePath, const char* data, size_t size) {
-	std::ofstream ofs(filePath, std::ios::binary);
-	if (!ofs.is_open()) {
-		return false;
-	}
+    std::ofstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
 
-	if (data == nullptr || size == 0) {
-		// 允许写空文件的话可 return true; 否则 return false;
-		return false;
-	}
-
-	ofs.write(data, static_cast<std::streamsize>(size));
-	if (!ofs.good()) {
-		return false;
-	}
-
-	return true;
+    file.write(data, size);
+    return file.good();
 }
 
 size_t readBytesFromFile(const std::string& filePath, std::vector<char>& outData) {
-	outData.clear();
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        return 0;
+    }
 
-	std::ifstream in(filePath, std::ios::binary);
-	if (!in.is_open()) return 0;
+    file.seekg(0, std::ios::end);
+    size_t size = static_cast<size_t>(file.tellg());
+    file.seekg(0, std::ios::beg);
 
-	in.seekg(0, std::ios::end);
-	std::streampos endPos = in.tellg();
-	if (endPos < 0) return 0;
+    outData.resize(size);
+    file.read(outData.data(), size);
 
-	const size_t size = static_cast<size_t>(endPos);
-	in.seekg(0, std::ios::beg);
-
-	outData.resize(size);
-	if (size > 0) {
-		in.read(outData.data(), static_cast<std::streamsize>(size));
-		if (!in.good() && !in.eof()) {
-			outData.clear();
-			return 0;
-		}
-	}
-	return outData.size();
-}
-
-std::string getCurrentTime() {
-	auto now = std::chrono::system_clock::now();
-	std::time_t t = std::chrono::system_clock::to_time_t(now);
-
-	std::tm tmBuf{};
-#ifdef _WIN32
-	localtime_s(&tmBuf, &t);
-#else
-	localtime_r(&t, &tmBuf);
-#endif
-
-	std::ostringstream oss;
-	oss << std::put_time(&tmBuf, "%Y-%m-%d %H:%M:%S");
-	return oss.str();
+    return size;
 }
 
 bool fileExists(const std::string& filePath) {
-	std::error_code ec;
-	return std::filesystem::exists(filePath, ec) && std::filesystem::is_regular_file(filePath, ec);
+    struct stat buffer;
+    return (stat(filePath.c_str(), &buffer) == 0);
 }
 
-bool createDirectoryIfNotExists(const std::string& dirPath) {
-	if (dirPath.empty()) return false;
+size_t getFileSize(const std::string& filePath) {
+    struct stat buffer;
+    if (stat(filePath.c_str(), &buffer) != 0) {
+        return 0;
+    }
+    return static_cast<size_t>(buffer.st_size);
+}
 
-	std::error_code ec;
-	if (std::filesystem::exists(dirPath, ec)) {
-		return std::filesystem::is_directory(dirPath, ec);
-	}
+bool deleteFile(const std::string& filePath) {
+    return std::remove(filePath.c_str()) == 0;
+}
 
-	return std::filesystem::create_directories(dirPath, ec);
+bool createDirectory(const std::string& dirPath) {
+#ifdef _WIN32
+    return _mkdir(dirPath.c_str()) == 0;
+#else
+    return mkdir(dirPath.c_str(), 0777) == 0;
+#endif
+}
+
+// ============================================
+// 时间函数实现
+// ============================================
+
+std::string getCurrentTime() {
+    auto now = std::time(nullptr);
+
+    struct tm tm_now_buf = {};
+    localtime_s(&tm_now_buf, &now);
+    std::tm* tm_now = &tm_now_buf;
+
+    std::ostringstream oss;
+    oss << std::put_time(tm_now, "%Y-%m-%d %H:%M:%S");
+    return oss.str();
+}
+
+long long getCurrentTimestamp() {
+    return static_cast<long long>(std::time(nullptr));
+}
+
+struct tm parseTimeString(const std::string& timeStr) {
+    struct tm tm_result = {};
+    std::istringstream ss(timeStr);
+    ss >> std::get_time(&tm_result, "%Y-%m-%d %H:%M:%S");
+    return tm_result;
+}
+
+// ============================================
+// 其他工具函数实现
+// ============================================
+
+int getRandomInt(int min, int max) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(min, max);
+    return dis(gen);
+}
+
+size_t simpleHash(const std::string& str) {
+    size_t hash = 5381;
+    for (char c : str) {
+        hash = ((hash << 5) + hash) + static_cast<size_t>(c);
+    }
+    return hash;
 }
