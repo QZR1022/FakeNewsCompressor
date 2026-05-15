@@ -1,4 +1,4 @@
-#ifndef DETECTOR_H
+﻿#ifndef DETECTOR_H
 #define DETECTOR_H
 
 #include <string>

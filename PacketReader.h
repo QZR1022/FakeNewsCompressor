@@ -1,4 +1,4 @@
-#ifndef PACKET_READER_H
+﻿#ifndef PACKET_READER_H
 #define PACKET_READER_H
 
 #include <string>

@@ -1,4 +1,4 @@
-#ifndef TRACKER_H
+﻿#ifndef TRACKER_H
 #define TRACKER_H
 
 #include <string>

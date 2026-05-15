@@ -1,204 +1,271 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <utility>
-#include <iomanip>
+﻿#define _CRT_SECURE_NO_WARNINGS
 
 #include "Config.h"
-#include "Utils.h"
 #include "PacketReader.h"
 #include "Detector.h"
 #include "Tracker.h"
-#include "LZ77.h"
 #include "Searcher.h"
 #include "ConsoleUI.h"
+#include "LZ77.h"
+#include "Utils.h"
 
-#ifdef _WIN32
+#include <iostream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <fstream>
+#include <direct.h> // _mkdir
+#include <sys/stat.h> // stat
 #include <windows.h>
-#endif
+#include <clocale>
+
+// 检查目录是否存在
+static bool dirExists(const std::string& path) {
+	struct stat info;
+	return (stat(path.c_str(), &info) == 0) && (info.st_mode & S_IFDIR);
+}
+
+// 确保目录存在
+static bool ensureDir(const std::string& path) {
+	if (dirExists(path)) return true;
+	return _mkdir(path.c_str()) == 0;
+}
+
+// 构造压缩文件路径：archive/<fingerprint>.ncz
+static std::string buildArchivePath(size_t fingerprint) {
+	std::ostringstream oss;
+	oss << ARCHIVE_DIR << fingerprint << COMPRESSED_EXT;
+	return oss.str();
+}
 
 int main() {
-
-#ifdef _WIN32
-	SetConsoleOutputCP(CP_UTF8);
-#endif
+	SetConsoleOutputCP(65001);
+	SetConsoleCP(65001);
+	setlocale(LC_ALL, ".UTF-8");
 
 	ConsoleUI ui;
-	PacketReader reader;
 	Detector detector;
 	Tracker tracker;
-	LZ77 lz77(LZ77_WINDOW_SIZE, LZ77_LOOKAHEAD_SIZE);
 	Searcher searcher;
+	LZ77 compressor(LZ77_WINDOW_SIZE, LZ77_LOOKAHEAD_SIZE);
 
-	detector.setThreshold(40.0); // 先给一个更稳的阈值，后续可调
+	// 检索上下文
+	std::vector<std::string> allContents;
+	std::vector<std::string> allTimestamps;
+	std::vector<double> allCredibilities;
 
-	// 2) 准备目录
-	createDirectory(ARCHIVE_DIR);
+	// 最近一次监控缓存（给统计模式用）
+	bool hasMonitorRun = false;
+	int lastTotalNews = 0;
+	int lastFakeCount = 0;
+	double lastFakeRatio = 0.0;
+	double lastAvgRatio = 0.0;
+	double lastGlobalRatio = 0.0;
+	double lastSavingRate = 0.0;
+	int lastExpansionCases = 0;
+	size_t lastTotalOriginalBytes = 0;
+	size_t lastTotalCompressedBytes = 0;
 
-	ui.showSplashScreen();
+	bool running = true;
 
-	// 3) 读取新闻文件
-	if (!reader.loadFile(NEWS_FILE)) {
-		ui.showError("Failed to load news file: " + NEWS_FILE);
-		ui.showInfo("Please check file path and format: timestamp|ip|content");
-		ui.waitForKey();
-		return 1;
-	}
-
-
-	std::vector<NewsPacket> allNews = reader.getAllNews();
-
-	if ((int)allNews.size() > MAX_NEWS_COUNT) {
-		allNews.resize(MAX_NEWS_COUNT);
-		ui.showWarning("Input too large, truncated to MAX_NEWS_COUNT = " + std::to_string(MAX_NEWS_COUNT));
-	}
-
-	int totalNews = (int)allNews.size();
-
-
-	if (totalNews <= 0) {
-		ui.showWarning("No valid news data found.");
-		ui.waitForKey();
-		return 0;
-	}
-
-	// 4) 预处理容器（给检索和统计用）
-	std::vector<std::string> contents;
-	std::vector<std::string> timestamps;
-	std::vector<double> credibilities;
-	contents.reserve(allNews.size());
-	timestamps.reserve(allNews.size());
-	credibilities.reserve(allNews.size());
-
-	int fakeCount = 0;
-	double ratioSum = 0.0;
-	int ratioCount = 0;
-
-	// 5) 主菜单循环
-	while (true) {
+	while (running) {
 		int choice = ui.showMainMenu();
 
 		if (choice == 1) {
-			// 监控流程：读取->检测->可疑压缩->追踪
-			fakeCount = 0;
-			ratioSum = 0.0;
-			ratioCount = 0;
+			// ==============================
+			// 监控模式（实时 + 详细）
+			// ==============================
+			PacketReader reader;
+			if (!reader.loadFile(NEWS_FILE)) {
+				ui.showError("无法加载新闻文件: " + NEWS_FILE);
+				ui.waitForKey();
+				continue;
+			}
 
-			contents.clear();
-			timestamps.clear();
-			credibilities.clear();
+			if (!ensureDir(DATA_DIR)) {
+				ui.showError("无法创建/访问数据目录: " + DATA_DIR);
+				ui.waitForKey();
+				continue;
+			}
+			if (!ensureDir(ARCHIVE_DIR)) {
+				ui.showError("无法创建/访问归档目录: " + ARCHIVE_DIR);
+				ui.waitForKey();
+				continue;
+			}
 
-			int archiveSuccess = 0;
-			int archiveFail = 0;
+			allContents.clear();
+			allTimestamps.clear();
+			allCredibilities.clear();
 
-			for (int i = 0; i < totalNews; ++i) {
-				const NewsPacket& pkt = allNews[i];
+			int total = reader.getTotalCount();
+			int processed = 0;
+			int fakeCount = 0;
+
+			double sumRatio = 0.0;
+			int ratioCount = 0;
+
+			size_t totalOriginalBytes = 0;
+			size_t totalCompressedBytes = 0;
+			int expansionCases = 0;
+
+			NewsPacket pkt;
+			while (reader.getNextNews(pkt)) {
+				processed++;
+
 				DetectionResult dr = detector.detect(pkt.content);
 
-				contents.push_back(pkt.content);
-				timestamps.push_back(pkt.timestamp);
-				credibilities.push_back(dr.credibility);
+				allContents.push_back(pkt.content);
+				allTimestamps.push_back(pkt.timestamp);
+				allCredibilities.push_back(dr.credibility);
 
-				bool isFake = (dr.label == "FAKE" );
+				bool isFake = (dr.credibility < 50.0);
 				if (isFake) {
 					fakeCount++;
 
-					// 生成指纹并记录传播
 					size_t fp = tracker.generateFingerprint(pkt.content);
 					tracker.recordPropagation(fp, pkt.sourceIP, pkt.timestamp);
 
-					// 对假新闻进行压缩归档
-					std::vector<char> compressed = lz77.compress(pkt.content);
+					std::vector<char> compressed = compressor.compress(pkt.content);
+					std::string outPath = buildArchivePath(fp);
 
-					size_t o = 0, z = 0, t = 0;
-					lz77.getLastStats(o, z, t);
-					if (o > 0) {
-						double ratio = lz77.getCompressionRatio(o, z);
-						ratioSum += ratio;
-						ratioCount++;
-					}
+					if (writeBytesToFile(outPath, compressed.data(), compressed.size())) {
+						size_t original = pkt.content.size();
+						size_t comp = compressed.size();
 
-					// 归档文件名：fingerprint.ncz
-					std::string outPath = ARCHIVE_DIR + std::to_string(fp) + COMPRESSED_EXT;
-					if (!compressed.empty()) {
-						bool ok = writeBytesToFile(outPath, compressed.data(), compressed.size());
-						if (ok) {
-							archiveSuccess++;
-						}
-						else {
-							archiveFail++;
-							ui.showWarning("Archive write failed: " + outPath);
+						if (original > 0) {
+							double ratio = compressor.getCompressionRatio(original, comp);
+							sumRatio += ratio;
+							ratioCount++;
+
+							totalOriginalBytes += original;
+							totalCompressedBytes += comp;
+
+							if (comp > original) expansionCases++;
 						}
 					}
 				}
 
-				double avgRatio = (ratioCount > 0) ? (ratioSum / ratioCount) : 0.0;
-				ui.showMonitorPanel(i + 1, totalNews, fakeCount, avgRatio);
+				double avgRatioRealtime = (ratioCount > 0) ? (sumRatio / ratioCount) : 0.0;
+				ui.showMonitorPanel(processed, total, fakeCount, avgRatioRealtime);
+				ui.showDetectionResult(pkt.content, dr.credibility, isFake);
 			}
 
-			// 构建检索索引
-			searcher.buildIndex(contents);
-			searcher.setNewsContext(timestamps, credibilities);
+			searcher.buildIndex(allContents);
+			searcher.setNewsContext(allTimestamps, allCredibilities);
 
-			ui.showSuccess("Monitoring completed.");
-			ui.showInfo("Total: " + std::to_string(totalNews) +
-				", Fake: " + std::to_string(fakeCount));
-			ui.showInfo("Archive write success: " + std::to_string(archiveSuccess) +
-				", fail: " + std::to_string(archiveFail));
+			double avgRatio = (ratioCount > 0) ? (sumRatio / ratioCount) : 0.0;
+			double fakeRatio = (total > 0) ? ((double)fakeCount / (double)total * 100.0) : 0.0;
+			double globalRatio = 0.0;
+			double savingRate = 0.0;
+
+			if (totalOriginalBytes > 0) {
+				globalRatio = compressor.getCompressionRatio(totalOriginalBytes, totalCompressedBytes);
+				savingRate = compressor.getSpaceSavingRate(totalOriginalBytes, totalCompressedBytes);
+			}
+
+			std::vector<std::pair<size_t, int>> top3 = tracker.getTopFakeNews(3);
+			ui.showStatistics(total, fakeCount, globalRatio, fakeRatio, top3);
+
+			// 监控模式专属详细
+			std::cout << "\n============ COMPRESSION DETAILS ============\n";
+			std::cout << "Avg Ratio (sample mean): " << avgRatio << "%\n";
+			std::cout << "Global Ratio (bytes): " << globalRatio << "%\n";
+			std::cout << "Space Saving Rate: " << savingRate << "%\n";
+			std::cout << "Original Bytes (total): " << totalOriginalBytes << "\n";
+			std::cout << "Compressed Bytes(total): " << totalCompressedBytes << "\n";
+			std::cout << "Expansion Cases: " << expansionCases << " / " << fakeCount << "\n";
+			std::cout << "Note: Ratio > 100% means expansion on short texts (normal).\n";
+			std::cout << "=============================================\n";
+
+			// 缓存给统计模式
+			hasMonitorRun = true;
+			lastTotalNews = total;
+			lastFakeCount = fakeCount;
+			lastFakeRatio = fakeRatio;
+			lastAvgRatio = avgRatio;
+			lastGlobalRatio = globalRatio;
+			lastSavingRate = savingRate;
+			lastExpansionCases = expansionCases;
+			lastTotalOriginalBytes = totalOriginalBytes;
+			lastTotalCompressedBytes = totalCompressedBytes;
+
+			ui.showSuccess("监控完成。");
 			ui.waitForKey();
 		}
 		else if (choice == 2) {
-			// 检索
-			if (contents.empty()) {
-				ui.showWarning("Please run Monitoring first (Menu 1).");
+			// ==============================
+			// 检索模式
+			// ==============================
+			if (searcher.getDocumentCount() <= 0) {
+				ui.showWarning("当前没有可检索数据，请先执行一次监控模式。");
 				ui.waitForKey();
 				continue;
 			}
 
 			ui.clearScreen();
-			ui.showInfo("Search mode:");
-			ui.showInfo("1) Exact phrase search (recommended for Chinese)");
-			ui.showInfo("2) Keyword search (better for English tokens)");
-			std::cout << "Choose mode (1-2): ";
-			int mode = ui.getUserChoice(1, 2);
-
-			std::string key = ui.getUserInput("Input keyword/phrase: ");
-			key = trim(key);
-
-			if (key.empty()) {
-				ui.showWarning("Keyword/phrase is empty.");
+			std::string keyword = ui.getUserInput("请输入关键词（支持单词/短语）: ");
+			if (keyword.empty()) {
+				ui.showWarning("关键词不能为空。");
 				ui.waitForKey();
 				continue;
 			}
 
 			std::vector<SearchResult> results;
-
-			if (mode == 1) {
-				results = searcher.searchExact(key);
+			if (keyword.find(' ') != std::string::npos) {
+				results = searcher.searchExact(keyword);
 			}
 			else {
-				results = searcher.search(key);
+				results = searcher.search(keyword);
 			}
 
 			ui.showSearchResults(results);
 			ui.waitForKey();
 		}
 		else if (choice == 3) {
-			// 统计
-			double avgCompressionRatio = (ratioCount > 0) ? (ratioSum / ratioCount) : 0.0;
-
-			double fakeRatio = 0.0;
-			if (totalNews > 0) {
-				fakeRatio = (double)fakeCount * 100.0 / (double)totalNews;
+			// ==============================
+			// 统计模式（总览，不重复监控详细）
+			// ==============================
+			if (!hasMonitorRun) {
+				ui.showWarning("暂无统计数据，请先执行一次监控模式。");
+				ui.waitForKey();
+				continue;
 			}
 
-			std::vector<std::pair<size_t, int>> topList = tracker.getTopFakeNews(5);
-			ui.showStatistics(totalNews, fakeCount, avgCompressionRatio, fakeRatio, topList);
+			ui.clearScreen();
+			std::cout << "=============== 统计总览（模式3） ===============\n";
+			std::cout << "总新闻数: " << lastTotalNews << "\n";
+			std::cout << "假新闻数: " << lastFakeCount << "\n";
+			std::cout << "假新闻占比: " << lastFakeRatio << "%\n\n";
+
+			std::cout << "【压缩总览】\n";
+			std::cout << "- 样本平均压缩率: " << lastAvgRatio << "%\n";
+			std::cout << "- 全局字节压缩率: " << lastGlobalRatio << "%";
+			if (lastGlobalRatio > 100.0) std::cout << "（膨胀）";
+			std::cout << "\n";
+			std::cout << "- 空间节省率: " << lastSavingRate << "%\n";
+			std::cout << "- 原始总字节: " << lastTotalOriginalBytes << "\n";
+			std::cout << "- 压缩后字节: " << lastTotalCompressedBytes << "\n";
+			std::cout << "- 膨胀条数: " << lastExpansionCases << " / " << lastFakeCount << "\n\n";
+
+			std::cout << "【传播热点 Top5】\n";
+			std::vector<std::pair<size_t, int>> top5 = tracker.getTopFakeNews(5);
+			if (top5.empty()) {
+				std::cout << "(空)\n";
+			}
+			else {
+				for (size_t i = 0; i < top5.size(); ++i) {
+					std::cout << " " << (i + 1)
+						<< ". 指纹=" << top5[i].first
+						<< "，传播次数=" << top5[i].second << "\n";
+				}
+			}
+			std::cout << "=================================================\n";
+
 			ui.waitForKey();
 		}
 		else if (choice == 4) {
-			ui.showInfo("Bye.");
-			break;
+			running = false;
+			ui.showInfo("程序退出。");
 		}
 	}
 

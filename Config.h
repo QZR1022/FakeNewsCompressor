@@ -1,4 +1,4 @@
-
+﻿
 #ifndef CONFIG_H
 #define CONFIG_H
 
@@ -24,5 +24,5 @@ const int COLOR_GREEN = 10;             // 绿色（成功/正常）
 const int COLOR_RED = 12;               // 红色（警告/假新闻）
 const int COLOR_YELLOW = 14;            // 黄色（注意）
 const int COLOR_CYAN = 11;              // 青色（标题）
-
+const int COLOR_BLUE = 9;
 #endif // CONFIG_H
