@@ -1,58 +1,105 @@
-﻿#ifndef PACKET_READER_H
-#define PACKET_READER_H
+﻿#ifndef PACKETREADER_H
+#define PACKETREADER_H
+
+// ============================================
+// PacketReader.h - 新闻数据读取器头文件
+// ============================================
+// 功能：从 news.txt 文件读取新闻数据包
+// 格式：timestamp|IP|content（竖线分隔）
+// 作者：QZR1022
+// 版本：1.0
+// ============================================
 
 #include <string>
 #include <vector>
 
-// 单条新闻的数据结构
+// ============================================
+// NewsPacket - 新闻数据包结构
+// 说明：包含新闻的完整信息
+// ============================================
 struct NewsPacket {
-    std::string timestamp;   // 时间戳，格式 "YYYY-MM-DD HH:MM:SS"
-    std::string sourceIP;    // 来源IP地址
-    std::string content;     // 新闻正文
+	std::string timestamp;  // 时间戳（格式：YYYY-MM-DD HH:MM:SS）
+	std::string sourceIP;   // 来源 IP 地址
+	std::string content;    // 新闻正文内容
 };
 
-// 数据读取器类
+// ============================================
+// PacketReader - 新闻数据读取器类
+// 说明：从文件读取新闻数据，提供遍历接口
+// 文件格式：
+//   每行一条新闻，格式：timestamp|IP|content
+//   例如：2026-05-14 10:00:01|192.168.1.1|震惊！林丹决赛前药检阳性！
+// ============================================
 class PacketReader {
 public:
-    // 构造函数：传入新闻文件路径
-    PacketReader();
+	// ============================================
+	// 构造函数
+	// 说明：初始化读取位置为 0
+	// ============================================
+	PacketReader();
 
-    // 析构函数：关闭文件
-    ~PacketReader();
+	// ============================================
+	// 析构函数
+	// 说明：当前版本不持久占用文件句柄，无需额外释放
+	// ============================================
+	~PacketReader();
 
-    // 加载新闻文件
-    // 参数：filePath - 新闻文件路径
-    // 返回：成功返回true，失败返回false
-    bool loadFile(const std::string& filePath);
+	// ============================================
+	// loadFile: 加载新闻文件
+	// 参数：filePath - 新闻文件路径（data/news.txt）
+	// 返回：成功返回 true，失败返回 false
+	// 说明：
+	//   1. 清空现有数据
+	//   2. 逐行读取文件
+	//   3. 解析每行，提取 timestamp、IP、content
+	//   4. 跳过格式错误的行
+	// ============================================
+	bool loadFile(const std::string& filePath);
 
-    // 获取下一条新闻
-    // 参数：packet - 输出参数，存储新闻数据
-    // 返回：成功返回true，没有更多返回false
-    bool getNextNews(NewsPacket& packet);
+	// ============================================
+	// getNextNews: 获取下一条新闻
+	// 参数：packet - 输出参数，用于接收新闻数据
+	// 返回：有数据返回 true，无数据返回 false
+	// 说明：
+	//   - 按顺序返回新闻
+	//   - 每次调用后内部指针前移
+	//   - 支持循环遍历
+	// ============================================
+	bool getNextNews(NewsPacket& packet);
 
-    // 重置读取位置（从头开始读）
-    void reset();
+	// ============================================
+	// reset: 重置读取位置
+	// 说明：将内部指针重置到起始位置，可重新遍历
+	// ============================================
+	void reset();
 
-    // 获取新闻总数
-    // 返回：总新闻条数
-    int getTotalCount() const;
+	// ============================================
+	// getTotalCount: 获取新闻总数
+	// 返回：已加载的新闻数量
+	// ============================================
+	int getTotalCount() const;
 
-    // 获取已读取的新闻数量
-    // 返回：当前已读取条数
-    int getReadCount() const;
+	// ============================================
+	// getReadCount: 获取已读取数量
+	// 返回：已通过 getNextNews 读取的新闻数
+	// ============================================
+	int getReadCount() const;
 
-    // 是否还有更多新闻
-    // 返回：有返回true，否则false
-    bool hasNext() const;
+	// ============================================
+	// hasNext: 判断是否还有更多新闻
+	// 返回：有未读新闻返回 true
+	// ============================================
+	bool hasNext() const;
 
-    // 获取所有新闻（一次性加载到内存）
-    // 返回：所有新闻的列表
-    std::vector<NewsPacket> getAllNews();
+	// ============================================
+	// getAllNews: 获取所有新闻
+	// 返回：NewsPacket 向量，包含所有已加载的新闻
+	// ============================================
+	std::vector<NewsPacket> getAllNews();
 
 private:
-    std::vector<NewsPacket> m_newsList;   // 存储所有新闻
-    int m_currentIndex;                    // 当前读取位置
+	std::vector<NewsPacket> m_newsList;  // 新闻列表
+	int m_currentIndex;                  // 当前读取位置
 };
 
-#endif // PACKET_READER_H
-
+#endif // PACKETREADER_H

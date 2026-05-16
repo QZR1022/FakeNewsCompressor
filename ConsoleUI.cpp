@@ -5,21 +5,17 @@
 #include <iomanip>
 #include <limits>
 #include <conio.h>
-#include <cstdlib> // system
+#include <cstdlib>
 
 // =========================
 // 构造 / 析构
 // =========================
 ConsoleUI::ConsoleUI() {
-	// 获取标准输出句柄
 	m_consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-
-	// 保存程序启动时的原始控制台属性（颜色等）
 	GetConsoleScreenBufferInfo(m_consoleHandle, &m_originalConsoleInfo);
 }
 
 ConsoleUI::~ConsoleUI() {
-	// 程序结束时恢复原始控制台属性
 	SetConsoleTextAttribute(m_consoleHandle, m_originalConsoleInfo.wAttributes);
 }
 
@@ -27,18 +23,14 @@ ConsoleUI::~ConsoleUI() {
 // 颜色与基础控制
 // =========================
 void ConsoleUI::setColor(int colorCode) {
-	// 设置当前输出颜色
-	// colorCode 通常来自 Config.h，例如 COLOR_RED/COLOR_GREEN/COLOR_CYAN
 	SetConsoleTextAttribute(m_consoleHandle, static_cast<WORD>(colorCode));
 }
 
 void ConsoleUI::resetColor() {
-	// 恢复为程序启动时的默认颜色
 	SetConsoleTextAttribute(m_consoleHandle, m_originalConsoleInfo.wAttributes);
 }
 
 void ConsoleUI::clearScreen() {
-	// 清空控制台
 	system("cls");
 }
 
@@ -48,50 +40,71 @@ void ConsoleUI::clearScreen() {
 void ConsoleUI::showSplashScreen() {
 	clearScreen();
 
-	// 标题用青色
 	setColor(COLOR_CYAN);
-	std::cout << "=============================================\n";
-	std::cout << " NetCompress System \n";
-	std::cout << " Fake News Monitor & Intelligent Compress \n";
-	std::cout << "=============================================\n";
+	std::cout << R"(
+    ____  ____  ____  ____  ____  ____  _________
+   / / / / __ \/ __ \/ __ \/ __ \/ __ \/ ___/ __ \
+  / / / / /_/ / /_/ / / / / / / / / / / __/ /_/ /
+ / / / / __/ / __// /_/ / /_/ / /_/ / __/ / __/
+/ / / / /_/ / /_  / __/ / __// __  / /_/ / /_ 
+\/_/\____/\____/_/   /_/  /_/ /_/ /_/\____/\____/
+
+  Fake News Monitor & Intelligent Compression System
+  Ver 1.0 | C++17 | Zero Dependencies | Contest Entry
+)";
 	resetColor();
 
-	std::cout << "Version: 1.0\n";
-	std::cout << "No third-party libs | C++ + Windows Console\n\n";
+	std::cout << "\n";
+	setColor(COLOR_YELLOW);
+	std::cout << "  [Tech Stack] C++17 + STL + Windows API\n";
+	std::cout << "  [Features]   Detection | Compression | Tracking | Search\n";
+	resetColor();
+	std::cout << "\n";
 }
 
 int ConsoleUI::showMainMenu() {
 	clearScreen();
 
-	// 标题：青色
 	setColor(COLOR_CYAN);
-	std::cout << "============ MAIN MENU ============\n";
+	std::cout << R"(
++========================================================+
+|          FAKE NEWS COMPRESSOR - MAIN MENU             |
++========================================================+)";
 	resetColor();
 
-	// 1 监控：绿色
+	std::cout << "\n";
+
 	setColor(COLOR_GREEN);
-	std::cout << "1. Start Monitoring\n";
+	std::cout << "  [1] START MONITORING\n";
 	resetColor();
+	std::cout << "      Read news, detect and compress fake news\n";
 
-	// 2 检索：黄色
 	setColor(COLOR_YELLOW);
-	std::cout << "2. Search News\n";
+	std::cout << "  [2] SEARCH ARCHIVE\n";
 	resetColor();
+	std::cout << "      Search archived fake news by keywords\n";
 
-	// 3 统计：蓝色（如果你Config里没有COLOR_BLUE，就先用COLOR_CYAN）
 	setColor(COLOR_BLUE);
-	std::cout << "3. Show Statistics\n";
+	std::cout << "  [3] VIEW STATISTICS\n";
 	resetColor();
+	std::cout << "      Compression rate and top fake news ranking\n";
 
-	// 4 退出：红色
+	setColor(COLOR_CYAN);
+	std::cout << "  [4] ABOUT\n";
+	resetColor();
+	std::cout << "      Project info and technical highlights\n";
+
 	setColor(COLOR_RED);
-	std::cout << "4. Exit\n";
+	std::cout << "  [5] EXIT\n";
 	resetColor();
 
-	std::cout << "===================================\n";
-	std::cout << "Please enter choice (1-4): ";
+	std::cout << "\n";
+	setColor(COLOR_CYAN);
+	std::cout << "+========================================================+\n";
+	resetColor();
+	std::cout << "  Enter choice (1-5): ";
 
-	return getUserChoice(1, 4);
+	return getUserChoice(1, 5);
 }
 
 void ConsoleUI::showProgressBar(int current, int total, int width) {
@@ -115,7 +128,6 @@ void ConsoleUI::showProgressBar(int current, int total, int width) {
 void ConsoleUI::showMonitorPanel(int current, int total, int fakeCount, double avgRatio) {
 	clearScreen();
 
-	// 面板标题：青色
 	setColor(COLOR_CYAN);
 	std::cout << "============ MONITOR PANEL ============\n";
 	resetColor();
@@ -126,14 +138,10 @@ void ConsoleUI::showMonitorPanel(int current, int total, int fakeCount, double a
 
 	std::cout << "Processed: " << current << " / " << total << "\n";
 
-	// 假新闻计数：红色
 	setColor(COLOR_RED);
 	std::cout << "Fake News Found: " << fakeCount << "\n";
 	resetColor();
 
-	// 压缩率：
-	// <=100% 用绿色（压缩有效）
-	// >100% 用黄色（膨胀提醒）
 	if (avgRatio <= 100.0) setColor(COLOR_GREEN);
 	else setColor(COLOR_YELLOW);
 
@@ -150,7 +158,6 @@ void ConsoleUI::showMonitorPanel(int current, int total, int fakeCount, double a
 }
 
 void ConsoleUI::showDetectionResult(const std::string& content, double credibility, bool isFake) {
-	// 小标题：青色
 	setColor(COLOR_CYAN);
 	std::cout << "\n--- Detection Result ---\n";
 	resetColor();
@@ -160,7 +167,6 @@ void ConsoleUI::showDetectionResult(const std::string& content, double credibili
 		<< std::fixed << std::setprecision(2)
 		<< credibility << "\n";
 
-	// 标签颜色：假新闻红色，正常绿色
 	if (isFake) {
 		setColor(COLOR_RED);
 		std::cout << "Label: FAKE NEWS\n";
@@ -175,13 +181,11 @@ void ConsoleUI::showDetectionResult(const std::string& content, double credibili
 }
 
 void ConsoleUI::showSearchResults(const std::vector<SearchResult>& results) {
-	// 标题：青色
 	setColor(COLOR_CYAN);
 	std::cout << "\n============ SEARCH RESULTS ============\n";
 	resetColor();
 
 	if (results.empty()) {
-		// 无结果：黄色提醒
 		setColor(COLOR_YELLOW);
 		std::cout << "No matched results.\n";
 		resetColor();
@@ -208,28 +212,22 @@ void ConsoleUI::showStatistics(int totalNews, int fakeNews, double avgCompressio
 	const std::vector<std::pair<size_t, int>>& topList) {
 	clearScreen();
 
-	// 标题：青色
 	setColor(COLOR_CYAN);
 	std::cout << "=============== STATISTICS ===============\n";
 	resetColor();
 
 	std::cout << "Total News: " << totalNews << "\n";
 
-	// 假新闻数量：红色
 	setColor(COLOR_RED);
 	std::cout << "Fake News: " << fakeNews << "\n";
 	resetColor();
 
-	// 假新闻占比：黄色
 	setColor(COLOR_YELLOW);
 	std::cout << "Fake Ratio: "
 		<< std::fixed << std::setprecision(2)
 		<< fakeRatio << "%\n";
 	resetColor();
 
-	// 压缩率：
-	// <=100% 绿色
-	// >100% 黄色并标记 Expanded
 	if (avgCompressionRatio <= 100.0) setColor(COLOR_GREEN);
 	else setColor(COLOR_YELLOW);
 
@@ -242,7 +240,6 @@ void ConsoleUI::showStatistics(int totalNews, int fakeNews, double avgCompressio
 	std::cout << "\n";
 	resetColor();
 
-	// 节省率：>=0绿色，<0红色
 	double savingRate = 100.0 - avgCompressionRatio;
 	if (savingRate >= 0.0) setColor(COLOR_GREEN);
 	else setColor(COLOR_RED);
@@ -276,21 +273,18 @@ void ConsoleUI::showInfo(const std::string& message) {
 }
 
 void ConsoleUI::showSuccess(const std::string& message) {
-	// 成功：绿色
 	setColor(COLOR_GREEN);
 	std::cout << "[SUCCESS] " << message << "\n";
 	resetColor();
 }
 
 void ConsoleUI::showWarning(const std::string& message) {
-	// 警告：黄色
 	setColor(COLOR_YELLOW);
 	std::cout << "[WARNING] " << message << "\n";
 	resetColor();
 }
 
 void ConsoleUI::showError(const std::string& message) {
-	// 错误：红色
 	setColor(COLOR_RED);
 	std::cout << "[ERROR] " << message << "\n";
 	resetColor();
@@ -318,7 +312,6 @@ int ConsoleUI::getUserChoice(int min, int max) {
 	while (true) {
 		std::cin >> choice;
 
-		// 非数字输入
 		if (std::cin.fail()) {
 			std::cin.clear();
 			std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
@@ -326,10 +319,8 @@ int ConsoleUI::getUserChoice(int min, int max) {
 			continue;
 		}
 
-		// 清理输入缓冲
 		std::cin.ignore((std::numeric_limits<std::streamsize>::max)(), '\n');
 
-		// 范围校验
 		if (choice < min || choice > max) {
 			std::cout << "Out of range, please enter (" << min << "-" << max << "): ";
 			continue;
